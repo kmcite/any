@@ -1,0 +1,22 @@
+name: example
+description: Example Flutter app for the any package.
+publish_to: 'none'
+version: 1.1.0+4
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  any:
+    path: ../
+  cupertino_icons: ^2.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

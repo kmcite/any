@@ -1,4 +1,20 @@
+/// Public entry point for the **any** state-management library.
 library;
 
 export 'utils/any.dart'
-    show AnyScope, Binding, Command, Undo, Redo, AnyScopeBuildContext;
+    show
+        AnyScope,
+        AnySelector,
+        AnyScopeBuildContext,
+        Binding,
+        Command,
+        CommandContext,
+        HistoryState,
+        InitContext,
+        Record,
+        Redo,
+        RepositoryBinding,
+        ScopeMemento,
+        StatesBuilder,
+        Undo,
+        Updater;

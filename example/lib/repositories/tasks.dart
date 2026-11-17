@@ -1,6 +1,6 @@
 import 'dart:async' show StreamController;
 
-import 'package:any/models/task.dart';
+import 'package:example/models/task.dart';
 
 class TasksRepository {
   late final tasksController = StreamController<List<Task>>.broadcast()

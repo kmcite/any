@@ -1,5 +1,5 @@
-import 'package:any/states/application_state.dart';
-import 'package:any/utils/any.dart';
+import 'package:any/any.dart';
+import 'package:example/states/application_state.dart';
 
 class TaskInputUpdate extends Command {
   final String? title;

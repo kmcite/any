@@ -1,5 +1,5 @@
-import 'package:any/states/application_state.dart';
-import 'package:any/utils/any.dart';
+import 'package:any/any.dart';
+import 'package:example/states/application_state.dart';
 import 'package:flutter/material.dart';
 
 import '../commands/delete_task.dart';
@@ -12,7 +12,6 @@ class TasksList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final applicationState = context.of<ApplicationState>();
-    final count = context.of<int>();
     final tasks = applicationState.tasks;
     final colors = Theme.of(context).colorScheme;
 
@@ -65,12 +64,15 @@ class TasksList extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Text(
-                    '$count',
-                    style: TextStyle(
-                      color: colors.onSecondaryContainer,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
+                  AnySelector<int, int>(
+                    selector: (count) => count,
+                    builder: (context, count) => Text(
+                      '$count',
+                      style: TextStyle(
+                        color: colors.onSecondaryContainer,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
                 ],

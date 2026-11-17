@@ -1,7 +1,7 @@
-import 'package:any/models/task.dart';
-import 'package:any/repositories/tasks.dart';
-import 'package:any/states/application_state.dart';
-import 'package:any/utils/any.dart';
+import 'package:any/any.dart';
+import 'package:example/models/task.dart';
+import 'package:example/repositories/tasks.dart';
+import 'package:example/states/application_state.dart';
 
 class const PutTask(
   final String id,

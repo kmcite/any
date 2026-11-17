@@ -1,11 +1,17 @@
+/// Lean command-based state management for Flutter with selective rebuilds.
+library;
+
 import 'dart:async' show FutureOr, scheduleMicrotask;
 import 'dart:developer' as developer;
 
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/widgets.dart';
 
+/// Transforms the current value of state [S] into its next value.
 typedef Updater<S> = S Function(S state);
-typedef StatesBuilder = List<Object> Function(InitContext context);
+
+/// Builds the initial state objects for an [AnyScope].
+typedef StatesBuilder = List<Object> Function(InitContext init);
 
 // ============================================================
 // Dependency Binding
@@ -20,8 +26,10 @@ abstract interface class RepositoryBinding {
 }
 
 class Binding<R extends Object> implements RepositoryBinding {
+  /// Creates an eager binding with a ready-to-use [instance].
   Binding(R instance) : type = R, _create = null, _instance = instance;
 
+  /// Creates a lazy binding that calls [create] on the first [get] lookup.
   Binding.lazy(R Function() create) : type = R, _create = create;
 
   @override
@@ -112,8 +120,9 @@ final class HistoryState {
     DateTime? timestamp,
     Object? groupKey,
   }) {
-    final nextPast = [...past, snapshot];
-    if (nextPast.length > maxEntries) {
+    final nextPast = List<ScopeMemento>.of(past, growable: true)
+      ..add(snapshot);
+    while (nextPast.length > maxEntries) {
       nextPast.removeAt(0);
     }
     return HistoryState(
@@ -469,7 +478,58 @@ class _AnyScopeState extends State<AnyScope> {
     _scope = _Scope(
       states: widget.states,
       repositories: widget.repositories,
-    )..addListener(_onScopeChanged);
+    );
+  }
+
+  @override
+  void dispose() {
+    _scope.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _AnyScopeHost(
+      scope: _scope,
+      child: widget.child,
+    );
+  }
+}
+
+/// Rebuilds only the [InheritedModel] host when [scope] notifies, not [AnyScope].
+class _AnyScopeHost extends StatefulWidget {
+  const _AnyScopeHost({
+    required this.scope,
+    required this.child,
+  });
+
+  final _Scope scope;
+  final Widget child;
+
+  @override
+  State<_AnyScopeHost> createState() => _AnyScopeHostState();
+}
+
+class _AnyScopeHostState extends State<_AnyScopeHost> {
+  @override
+  void initState() {
+    super.initState();
+    widget.scope.addListener(_onScopeChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _AnyScopeHost oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.scope, widget.scope)) {
+      oldWidget.scope.removeListener(_onScopeChanged);
+      widget.scope.addListener(_onScopeChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.scope.removeListener(_onScopeChanged);
+    super.dispose();
   }
 
   void _onScopeChanged() {
@@ -477,18 +537,10 @@ class _AnyScopeState extends State<AnyScope> {
   }
 
   @override
-  void dispose() {
-    _scope
-      ..removeListener(_onScopeChanged)
-      ..dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return _AnyProvider(
-      scope: _scope,
-      snapshot: _scope.snapshot,
+      scope: widget.scope,
+      snapshot: widget.scope.snapshot,
       child: widget.child,
     );
   }
@@ -509,6 +561,22 @@ class _AnyProvider extends InheritedModel<Object> {
       context,
       aspect: _StateAspect<S>(),
     );
+    if (provider == null) {
+      throw FlutterError('No AnyScope found above this BuildContext.');
+    }
+    return provider.snapshot.read<S>();
+  }
+
+  static S? maybeOf<S>(BuildContext context) {
+    final provider = InheritedModel.inheritFrom<_AnyProvider>(
+      context,
+      aspect: _StateAspect<S>(),
+    );
+    return provider?.snapshot.read<S>();
+  }
+
+  static S read<S>(BuildContext context) {
+    final provider = context.getInheritedWidgetOfExactType<_AnyProvider>();
     if (provider == null) {
       throw FlutterError('No AnyScope found above this BuildContext.');
     }
@@ -567,12 +635,56 @@ class _StateAspect<S> implements _StateDependency {
 }
 
 // ============================================================
+// Selective rebuild widget
+// ============================================================
+
+/// Rebuilds only when [selector] produces a new value for state [S].
+class AnySelector<S, R> extends StatefulWidget {
+  const AnySelector({
+    super.key,
+    required this.selector,
+    required this.builder,
+  });
+
+  final R Function(S state) selector;
+  final Widget Function(BuildContext context, R value) builder;
+
+  @override
+  State<AnySelector<S, R>> createState() => _AnySelectorState<S, R>();
+}
+
+class _AnySelectorState<S, R> extends State<AnySelector<S, R>> {
+  R? _cachedValue;
+  Widget? _cachedChild;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = widget.selector(context.of<S>());
+    if (_cachedValue == selected && _cachedChild != null) {
+      return _cachedChild!;
+    }
+
+    _cachedValue = selected;
+    return _cachedChild = widget.builder(context, selected);
+  }
+}
+
+// ============================================================
 // BuildContext API
 // ============================================================
 
+/// Access to the nearest [AnyScope] from a [BuildContext].
 extension AnyScopeBuildContext on BuildContext {
+  /// Reads and subscribes to state [S]; the widget rebuilds when [S] changes.
   S of<S>() => _AnyProvider.of<S>(this);
 
+  /// Reads state [S] once without subscribing to later updates.
+  S read<S>() => _AnyProvider.read<S>(this);
+
+  /// Like [of], but returns `null` when no [AnyScope] ancestor exists.
+  S? maybeOf<S>() => _AnyProvider.maybeOf<S>(this);
+
+  /// Dispatches a [command] to the nearest scope.
   Future<void> call(Command command) => _AnyProvider.call(this, command);
 
   ScopeMemento save() => _AnyProvider.save(this);
