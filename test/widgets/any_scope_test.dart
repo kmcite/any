@@ -237,6 +237,45 @@ void main() {
 
     expect(() => context.restore(memento), throwsA(isA<StateError>()));
   });
+
+  testWidgets('failed memento restore leaves registered states unchanged', (
+    tester,
+  ) async {
+    late ScopeMemento memento;
+    await tester.pumpWidget(
+      AnyScope(
+        states: (_) => [const _CounterState(0), const _LabelState('source')],
+        child: Builder(
+          builder: (context) {
+            memento = context.save();
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+
+    late BuildContext context;
+    await tester.pumpWidget(
+      AnyScope(
+        key: const ValueKey('restore-target'),
+        states: (_) => [const _CounterState(10)],
+        child: MaterialApp(
+          home: Builder(
+            builder: (buildContext) {
+              context = buildContext;
+              return Text('counter:${buildContext.of<_CounterState>().value}');
+            },
+          ),
+        ),
+      ),
+    );
+
+    expect(() => context.restore(memento), throwsA(isA<StateError>()));
+    await context.call(const _AsyncChangeCounter());
+    await tester.pumpAndSettle();
+
+    expect(find.text('counter:11'), findsOneWidget);
+  });
 }
 
 Future<void> _tap(WidgetTester tester, String key) async {

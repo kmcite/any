@@ -280,15 +280,17 @@ class _Scope extends ChangeNotifier {
   }
 
   Set<Type> restore(ScopeMemento memento) {
+    for (final type in memento._states.keys) {
+      if (!_states.containsKey(type)) {
+        throw StateError('Cannot restore unregistered state type $type.');
+      }
+    }
+
     final restoredTypes = <Type>{};
 
     for (final entry in memento._states.entries) {
       final type = entry.key;
       final savedState = entry.value;
-
-      if (!_states.containsKey(type)) {
-        throw StateError('Cannot restore unregistered state type $type.');
-      }
 
       if (!identical(_states[type], savedState)) {
         _states[type] = savedState;
