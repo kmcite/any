@@ -11,20 +11,15 @@ main application flow easy to understand:
 The scope is the container, commands are the state-change path, and the UI
 renders the resulting state.
 
-## Requirements
+## Installation
 
-- Flutter
-- Dart SDK `^3.13.0`
-
-## Add the package
-
-This package is not currently published to pub.dev. For a local checkout, add
-it as a path dependency:
+Add the GitHub repository as a dependency:
 
 ```yaml
 dependencies:
   any:
-    path: ../any
+    git:
+      url: https://github.com/kmcite/any.git
 ```
 
 Then run:
@@ -73,7 +68,7 @@ class CounterRepository {
 
 class IncrementCounter extends Command {
   @override
-  void call(ScopeContext context) {
+  void call(CommandContext context) {
     final current = context.of<CounterState>().count;
     final next = context.get<CounterRepository>().nextCount(current);
 
@@ -134,7 +129,7 @@ in a scope; duplicate types throw an `ArgumentError`.
 ### 2. Commands: work and state changes
 
 Extend the non-generic `Command` class. Its `call` method receives a
-non-generic `ScopeContext` and can return either `void` or a `Future<void>`:
+non-generic `CommandContext` and can return either `void` or a `Future<void>`:
 
 - `context.of<S>()` reads the current state of type `S`.
 - `context.get<R>()` retrieves a registered repository of type `R`.
@@ -145,6 +140,55 @@ Commands can update any number of registered state types. Each call to
 `context.call<S>(updater)` commits immediately, increments that state's
 version, and notifies the scope. Keep updates predictable by returning new
 state values rather than mutating existing ones.
+
+### Mementos, undo, and redo
+
+From a widget's `BuildContext`, capture state before an operation and restore
+it later:
+
+```dart
+final checkpoint = context.saveOnly<CounterState>();
+await context.call(IncrementCounter());
+context.restore(checkpoint);
+```
+
+`context.save()` captures all registered states, while
+`context.saveOnly<S>()` captures only state `S`. A memento supports `read<S>()`
+and `has<S>()`; `merge(other)` combines mementos, with states from `other`
+taking precedence when both contain the same type. Mementos hold state values,
+not deep copies, so immutable state objects are recommended.
+
+To enable command history, register a `HistoryState` with the other states:
+
+```dart
+states: (init) => [
+  CounterState(count: init.get<CounterRepository>().initialCount),
+  const HistoryState(),
+],
+```
+
+Wrap state-changing commands in `Record<S>` and invoke `Undo<S>` or `Redo<S>`
+through the widget context:
+
+```dart
+await context.call(
+  Record<CounterState>(
+    IncrementCounter(),
+    debounce: const Duration(milliseconds: 400),
+    groupKey: 'counter',
+  ),
+);
+await context.call(const Undo<CounterState>());
+await context.call(const Redo<CounterState>());
+```
+
+`Record<S>` stores a checkpoint for state `S` when the wrapped command changes
+it; it does not record other state types the command may update. Updates with
+the same `groupKey` inside the debounce window are combined into one undo step.
+Without a debounce duration, each recorded change creates a separate step.
+`HistoryState.canUndo` and `canRedo` can be used to enable or disable history
+controls. It keeps up to 30 entries by default; configure `maxEntries` when
+creating it to change that limit.
 
 ### 3. Widgets: read state and dispatch commands
 
@@ -183,5 +227,7 @@ import 'package:any/utils/any.dart';
 ```
 
 The public API includes `AnyScope`, `Binding`, `RepositoryBinding`,
-`StatesFactory`, `InitContext`, `ScopeContext`, `Command`, `CommandFun`,
-`Updater`, and the `BuildContext` extensions `of` and `call`.
+`StatesBuilder`, `InitContext`, `CommandContext`, `ScopeMemento`,
+`HistoryState`, `Record`, `Undo`, `Redo`, `Command`, `Updater`,
+and the `BuildContext` extensions `of`, `call`, `save`, `saveOnly`, and
+`restore`.

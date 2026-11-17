@@ -59,10 +59,66 @@ void main() {
     expect(find.text('counter:2'), findsOneWidget);
     expect(find.text('history:1:0'), findsOneWidget);
   });
+
+  testWidgets('Record splits bursts when the group key changes', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_historyApp());
+
+    await _tap(tester, 'record');
+    await _tap(tester, 'record-other-group');
+
+    expect(find.text('counter:2'), findsOneWidget);
+    expect(find.text('history:2:0'), findsOneWidget);
+
+    await _tap(tester, 'undo');
+    expect(find.text('counter:1'), findsOneWidget);
+    expect(find.text('history:1:1'), findsOneWidget);
+  });
+
+  testWidgets('Record and Undo affect only their selected state type', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_historyApp());
+
+    await _tap(tester, 'record-both');
+    expect(find.text('counter:1'), findsOneWidget);
+    expect(find.text('label:recorded'), findsOneWidget);
+
+    await _tap(tester, 'undo');
+    expect(find.text('counter:0'), findsOneWidget);
+    expect(find.text('label:recorded'), findsOneWidget);
+  });
+
+  testWidgets('Record ignores no-op changes and history respects its limit', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_historyApp(maxEntries: 1));
+
+    await _tap(tester, 'undo');
+    await _tap(tester, 'redo');
+    await _tap(tester, 'record-no-op');
+    expect(find.text('counter:0'), findsOneWidget);
+    expect(find.text('history:0:0'), findsOneWidget);
+
+    await _tap(tester, 'record');
+    await _tap(tester, 'undo');
+    expect(find.text('counter:0'), findsOneWidget);
+    expect(find.text('history:0:1'), findsOneWidget);
+
+    await _tap(tester, 'record-no-debounce');
+    await _tap(tester, 'record-no-debounce');
+    expect(find.text('counter:2'), findsOneWidget);
+    expect(find.text('history:1:0'), findsOneWidget);
+
+    await _tap(tester, 'undo');
+    expect(find.text('counter:1'), findsOneWidget);
+    expect(find.text('history:0:1'), findsOneWidget);
+  });
 }
 
-Widget _historyApp() => AnyScope(
-  states: (_) => [0, 'initial', const HistoryState()],
+Widget _historyApp({int maxEntries = 30}) => AnyScope(
+  states: (_) => [0, 'initial', HistoryState(maxEntries: maxEntries)],
   child: const MaterialApp(
     home: Scaffold(body: _HistoryPage()),
   ),
@@ -199,6 +255,42 @@ class _HistoryPageState extends State<_HistoryPage> {
             child: const Text('Record'),
           ),
           ElevatedButton(
+            key: const ValueKey('record-other-group'),
+            onPressed: () async {
+              await context.call(
+                const Record<int>(
+                  _IncrementCounter(),
+                  debounce: Duration(days: 1),
+                  groupKey: 'other',
+                ),
+              );
+            },
+            child: const Text('Record another group'),
+          ),
+          ElevatedButton(
+            key: const ValueKey('record-both'),
+            onPressed: () async {
+              await context.call(const Record<int>(_IncrementBoth()));
+            },
+            child: const Text('Record both states'),
+          ),
+          ElevatedButton(
+            key: const ValueKey('record-no-op'),
+            onPressed: () async {
+              await context.call(const Record<int>(_KeepCounter()));
+            },
+            child: const Text('Record no-op'),
+          ),
+          ElevatedButton(
+            key: const ValueKey('record-no-debounce'),
+            onPressed: () async {
+              await context.call(
+                const Record<int>(_IncrementCounter()),
+              );
+            },
+            child: const Text('Record without debounce'),
+          ),
+          ElevatedButton(
             key: const ValueKey('undo'),
             onPressed: () async => context.call(const Undo<int>()),
             child: const Text('Undo'),
@@ -231,5 +323,25 @@ class _SetLabel extends Command {
   @override
   void call(CommandContext context) {
     context.call<String>((_) => value);
+  }
+}
+
+class _KeepCounter extends Command {
+  const _KeepCounter();
+
+  @override
+  void call(CommandContext context) {
+    final counter = context.of<int>();
+    context.call<int>((_) => counter);
+  }
+}
+
+class _IncrementBoth extends Command {
+  const _IncrementBoth();
+
+  @override
+  void call(CommandContext context) {
+    context.call<int>((counter) => counter + 1);
+    context.call<String>((_) => 'recorded');
   }
 }
