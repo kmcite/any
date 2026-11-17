@@ -1,9 +1,9 @@
 import 'package:any/any.dart';
+import 'package:example/commands/put_task.dart';
 import 'package:example/states/application_state.dart';
 import 'package:flutter/material.dart';
 
 import '../commands/delete_task.dart';
-import '../commands/put_task.dart';
 import '../commands/task_input_update.dart';
 
 class TasksList extends StatelessWidget {
@@ -14,19 +14,6 @@ class TasksList extends StatelessWidget {
     final applicationState = context.of<ApplicationState>();
     final tasks = applicationState.tasks;
     final colors = Theme.of(context).colorScheme;
-
-    Future<void> addTask() async {
-      final title = applicationState.title.trim();
-      if (title.isEmpty) return;
-
-      await context.call(
-        PutTask(
-          DateTime.now().toIso8601String(),
-          title,
-          applicationState.description.trim(),
-        ),
-      );
-    }
 
     return Container(
       decoration: BoxDecoration(
@@ -158,7 +145,7 @@ class TasksList extends StatelessWidget {
                     minLines: 1,
                     maxLines: 2,
                     textInputAction: TextInputAction.done,
-                    onFieldSubmitted: (_) => addTask(),
+                    onFieldSubmitted: (_) => context.call(const PutTask()),
                     decoration: InputDecoration(
                       labelText: 'Description (optional)',
                       hintText: 'Add a few helpful details',
@@ -175,7 +162,7 @@ class TasksList extends StatelessWidget {
                   FilledButton.icon(
                     onPressed: applicationState.title.trim().isEmpty
                         ? null
-                        : addTask,
+                        : () => context.call(const PutTask()),
                     icon: const Icon(Icons.add_rounded),
                     label: const Text('Add task'),
                   ),
@@ -287,11 +274,8 @@ class TasksList extends StatelessWidget {
                                 Icons.delete_outline_rounded,
                                 color: Theme.of(context).colorScheme.error,
                               ),
-                              onPressed: () {
-                                context.call(
-                                  DeleteTask(task),
-                                );
-                              },
+                              onPressed: () =>
+                                  context.call(DeleteTask(task)),
                             ),
                           ),
                         );

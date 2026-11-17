@@ -1,15 +1,23 @@
 # any
 
-`any` is a lean state-management library for Flutter built around three ideas:
+Lean command-based state management for Flutter: one scope, typed state,
+repositories, and selective widget rebuilds.
 
-1. **`AnyScope`** holds application state and repositories.
-2. **`Command`** classes perform work and commit state changes through a
-   `CommandContext`.
-3. **Widgets** observe state via `BuildContext` extensions and rebuild only for
-   the state types they subscribe to.
+| | |
+|---|---|
+| **Docs** | [Usage guide](doc/USAGE.md) · [Changelog](CHANGELOG.md) |
+| **Demo** | [`example/`](example/) tasks app |
+| **Import** | `package:any/any.dart` |
 
-For a longer walkthrough, see [doc/USAGE.md](doc/USAGE.md). A full demo lives in
-[`example/`](example/).
+## Why any
+
+1. **`AnyScope`** — register state and repositories once at the root.
+2. **`Command`** — named units of work that read a **`Ref`** and commit updates.
+3. **Widgets** — `context.of<S>()` (or `AnySelector`) subscribe only to the
+   state types they need.
+
+No codegen, no global singletons, and no rebuild of the whole tree when one
+state type changes.
 
 ## Installation
 
@@ -24,12 +32,6 @@ dependencies:
 flutter pub get
 ```
 
-Import the public API:
-
-```dart
-import 'package:any/any.dart';
-```
-
 ## Quick start
 
 ```dart
@@ -39,8 +41,8 @@ import 'package:flutter/material.dart';
 void main() {
   runApp(
     AnyScope(
-      states: (init) => [
-        CounterState(count: init.get<CounterRepository>().initialCount),
+      states: (initRef) => [
+        CounterState(count: initRef.get<CounterRepository>().initialCount),
       ],
       repositories: [Binding(CounterRepository())],
       child: const MaterialApp(home: CounterPage()),
@@ -64,10 +66,10 @@ class IncrementCounter extends Command {
   const IncrementCounter();
 
   @override
-  void call(CommandContext context) {
-    final current = context.of<CounterState>().count;
-    final next = context.get<CounterRepository>().nextCount(current);
-    context.call<CounterState>((state) => state.copyWith(count: next));
+  void call(Ref ref) {
+    final current = ref.of<CounterState>().count;
+    final next = ref.get<CounterRepository>().nextCount(current);
+    ref.call<CounterState>((state) => state.copyWith(count: next));
   }
 }
 
@@ -89,13 +91,25 @@ class CounterPage extends StatelessWidget {
 }
 ```
 
+## `Ref` vs `BuildContext`
+
+| | **`Ref`** (inside `Command.call`) | **`BuildContext`** (widgets) |
+|---|-----------------------------------|------------------------------|
+| Read state | `ref.of<S>()` | `context.of<S>()` (subscribes) |
+| Read once | — | `context.read<S>()` |
+| Repository | `ref.get<R>()` | — (use a `Command`) |
+| Commit state | `ref.call<S>(updater)` | — (use `context.call(command)`) |
+| Run command | — | `context.call(command)` |
+
+State commits always notify subscribers for that type, including in-place
+mutation when the updater returns the same instance.
+
 ## Scope setup
 
 ```dart
 AnyScope(
-  states: (init) => [
-    CounterState(count: init.get<CounterRepository>().initialCount),
-    const HistoryState(),
+  states: (initRef) => [
+    CounterState(count: initRef.get<CounterRepository>().initialCount),
   ],
   repositories: [
     Binding(CounterRepository()),
@@ -107,38 +121,44 @@ AnyScope(
 
 - **`states`** runs once at startup. Objects are keyed by **runtime type**; only
   one instance per type is allowed.
-- **`InitContext.get<R>()`** resolves repositories during initialization only.
+- **`InitRef.get<R>()`** resolves repositories during initialization only.
 - **`Binding(instance)`** is eager; **`Binding.lazy(() => …)`** creates on first
   `get`.
 
 ## Commands
 
-Extend `Command` and implement `call(CommandContext context)` (sync or async):
+```dart
+context.call(const IncrementCounter());
+```
 
-| Method | Purpose |
-|--------|---------|
-| `context.of<S>()` | Read current state |
-| `context.get<R>()` | Read repository |
-| `context.call<S>(updater)` | Commit new state for `S` |
-| `context.save()` / `saveOnly<S>()` | Capture mementos |
-| `context.restore(memento)` | Restore captured state |
+Inside `Command.call(Ref ref)`:
 
-Return new values from updaters; avoid mutating existing state in place.
+| API | Purpose |
+|-----|---------|
+| `ref.of<S>()` | Current state |
+| `ref.get<R>()` | Repository |
+| `ref.call<S>(updater)` | Commit next value for `S` |
+
+```dart
+// Copy-on-write
+ref.call<CounterState>((s) => s.copyWith(count: s.count + 1));
+
+// Mutable model (same instance)
+ref.call<ThemePreference>((t) => t..dark = !t.dark);
+```
 
 ## Widget API
 
 | Method | Subscribes? | Purpose |
 |--------|-------------|---------|
-| `context.of<S>()` | Yes | Build UI that tracks `S` |
+| `context.of<S>()` | Yes | UI that tracks `S` |
 | `context.read<S>()` | No | One-off read in callbacks |
-| `context.maybeOf<S>()` | Yes | Same as `of`, or `null` without a scope |
-| `context.call(command)` | No | Run a command |
-| `context.save()` / `saveOnly<S>()` / `restore(...)` | No | Memento helpers |
+| `context.maybeOf<S>()` | Yes | Like `of`, or `null` without a scope |
+| `context.call(command)` | No | Run a `Command` |
 
-### Selective rebuilds
+### `AnySelector`
 
-`AnySelector` subscribes to `S` but only runs `builder` when the selected value
-changes (`==`):
+Rebuild only when `selector(state)` changes (`==`):
 
 ```dart
 AnySelector<CounterState, int>(
@@ -147,45 +167,39 @@ AnySelector<CounterState, int>(
 )
 ```
 
-## Undo and redo
+## Performance
 
-Register `HistoryState`, wrap commands with `Record<S>`, and call `Undo<S>` /
-`Redo<S>`:
+- Per-type **versions** — `of<S>()` rebuilds only when `S` changes.
+- Notifications **coalesced** per frame (microtask).
+- Provider host rebuilds, not the full `AnyScope` config widget.
+- Prefer **`read`** in handlers; use **`AnySelector`** for large state slices.
 
-```dart
-await context.call(
-  Record<CounterState>(
-    const IncrementCounter(),
-    debounce: const Duration(milliseconds: 400),
-    groupKey: 'counter',
-  ),
-);
-await context.call(const Undo<CounterState>());
-```
+## Debugging
 
-See [doc/USAGE.md](doc/USAGE.md) for debounce grouping, `maxEntries`, and
-memento merge behavior.
+Debug builds log under `any.scope` (`dart:developer`): command type, scope
+version, affected state types — not payloads.
 
-## Performance notes
+## Library layout
 
-- State updates are **versioned per type**; widgets that call `of<S>()` rebuild
-  only when `S` changes, not when unrelated types change.
-- Scope notifications are **coalesced per frame** (microtask batching).
-- The inherited provider rebuilds through a lightweight host, not the full
-  `AnyScope` configuration widget.
-- Use **`read`** in event handlers to avoid unnecessary listenables.
-- Use **`AnySelector`** when a widget depends on a slice of a large state object.
+| File | Role |
+|------|------|
+| `lib/any.dart` | Public library import |
+| `lib/binding.dart` | `Binding`, `RepositoryBinding` |
+| `lib/command.dart` | `Command`, `Ref`, `InitRef`, typedefs |
+| `lib/scope.dart` | Scope runtime |
+| `lib/any_scope.dart` | `AnyScope` + inherited provider |
+| `lib/selector.dart` | `AnySelector` |
+| `lib/context.dart` | `AnyScopeBuildContext` |
+| `lib/logging.dart` | Debug tree / command logs |
 
-## Logging
-
-Debug builds log scope layout and command results under `any.scope` via
-`dart:developer`. Logs include command types, scope version, and affected state
-types—not state payloads.
+Tests live beside each part: `test/binding_test.dart`, `test/command_test.dart`,
+and so on.
 
 ## Public API
 
-Exported from `package:any/any.dart`:
+`AnyScope`, `AnySelector`, `AnyScopeBuildContext`, `Binding`, `RepositoryBinding`,
+`Command`, `Ref`, `InitRef`, `StatesBuilder`, `Updater`.
 
-`AnyScope`, `AnySelector`, `Binding`, `RepositoryBinding`, `Command`,
-`CommandContext`, `InitContext`, `ScopeMemento`, `HistoryState`, `Record`,
-`Undo`, `Redo`, `StatesBuilder`, `Updater`, and `AnyScopeBuildContext`.
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for breaking changes and migration notes.

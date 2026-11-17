@@ -13,11 +13,10 @@ void main() {
       repositories: [
         Binding(TasksRepository()),
       ],
-      states: (init) => [
-        const ThemePreference(),
-        init.get<TasksRepository>().increment(0),
+      states: (initRef) => [
+        ThemePreference(),
+        initRef.get<TasksRepository>().increment(0),
         const ApplicationState(),
-        const HistoryState(maxEntries: 50),
       ],
       child: const TasksApp(),
     ),
@@ -29,13 +28,13 @@ class TasksApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = context.of<ThemePreference>().isDark;
+    final dark = context.of<ThemePreference>().dark;
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData.light(),
       darkTheme: ThemeData.dark(),
-      themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
+      themeMode: dark ? ThemeMode.dark : ThemeMode.light,
       home: Scaffold(
         appBar: CustomBar(
           title: 'My Tasks',
@@ -46,7 +45,7 @@ class TasksApp extends StatelessWidget {
           },
           secondIcon: Icons.bolt_rounded,
           hasUnreadNotifications: false,
-          onSecondCalled: () => context.call(CountCommand()),
+          onSecondCalled: () => context.call(const CountCommand()),
         ),
         body: const Padding(
           padding: EdgeInsets.all(16),

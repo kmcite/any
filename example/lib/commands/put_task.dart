@@ -3,21 +3,23 @@ import 'package:example/models/task.dart';
 import 'package:example/repositories/tasks.dart';
 import 'package:example/states/application_state.dart';
 
-class const PutTask(
-  final String id,
-  final String title,
-  final String description,
-) extends Command {
-  @override
-  Future<void> call(f) async {
-    final task = Task(
-      id: id,
-      title: title,
-      description: description,
-    );
-    await f.get<TasksRepository>().put(task);
+class PutTask extends Command {
+  const PutTask();
 
-    f<ApplicationState>(
+  @override
+  Future<void> call(Ref ref) async {
+    final draft = ref.of<ApplicationState>();
+    final title = draft.title.trim();
+    if (title.isEmpty) return;
+
+    final task = Task(
+      id: DateTime.now().toIso8601String(),
+      title: title,
+      description: draft.description.trim(),
+    );
+
+    await ref.get<TasksRepository>().put(task);
+    ref.call<ApplicationState>(
       (state) => state.copyWith(
         title: '',
         description: '',

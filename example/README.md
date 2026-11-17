@@ -1,7 +1,10 @@
-# Example app
+# Example — tasks demo
 
-Demonstrates **any** with a small tasks UI: theme toggle, repository-backed
-counter, command-driven CRUD, and selective rebuilds via `AnySelector`.
+A small Flutter app showing **any** with theme toggle, form state, repository
+CRUD, and selective rebuilds.
+
+**Package docs:** [../README.md](../README.md) ·
+[../doc/USAGE.md](../doc/USAGE.md)
 
 ## Run
 
@@ -10,19 +13,50 @@ flutter pub get
 flutter run
 ```
 
-From the repository root you can also run:
+From the repo root:
 
 ```sh
 flutter run -C example
 ```
 
-## Structure
+## What it demonstrates
 
-- `lib/main.dart` — `AnyScope` setup and `MaterialApp`
-- `lib/commands/` — `Command` implementations
-- `lib/states/` — immutable state types
-- `lib/repositories/` — data access
-- `lib/features/` — widgets
+| Feature | Where |
+|---------|--------|
+| `AnyScope` setup | `lib/main.dart` |
+| Mutable state (`ThemePreference`) | `ToggleDarkCommand` |
+| Immutable `copyWith` state | `ApplicationState`, task commands |
+| Repository `Binding` | `TasksRepository` |
+| `AnySelector` on `int` | `features/tasks_list.dart` |
+| `context.read` vs `context.of` | widgets vs commands |
 
-Import the library with `package:any/any.dart`, and example code with
-`package:example/...`.
+## Layout
+
+```
+lib/
+  main.dart
+  commands/
+    count.dart          # CountCommand, ToggleDarkCommand
+    put_task.dart
+    delete_task.dart
+    task_input_update.dart
+  states/
+  repositories/
+  models/
+  features/
+```
+
+Imports:
+
+- Library — `package:any/any.dart`
+- Example — `package:example/...`
+
+## Commands (quick reference)
+
+| Command | Effect |
+|---------|--------|
+| `ToggleDarkCommand` | Flips `ThemePreference.dark` |
+| `CountCommand` | Increments scoped `int` via repository |
+| `TaskInputUpdate` | Updates draft title/description |
+| `PutTask` | Persists task, clears form |
+| `DeleteTask(task)` | Removes task from repo + state |
